@@ -237,7 +237,34 @@ export default function KhoKhoWebsite() {
         if (snapshot.exists()) {
           const data = snapshot.val();
           if (data.gameState) {
-            setGameState(data.gameState);
+            // Merge Firebase state with local state intelligently
+            // Only update the parts controlled by the OTHER player
+            setGameState(prevState => {
+              if (!prevState) return data.gameState;
+
+              const merged = { ...data.gameState };
+
+              // If we're the blue player, keep our local activeChaser and chasers
+              // but accept the red player's defenders
+              if (playerRoleRef.current === 'blue') {
+                merged.activeChaser = prevState.activeChaser;
+                merged.chasers = prevState.chasers;
+              }
+
+              // If we're the red player, keep our local defenders
+              // but accept the blue player's activeChaser and chasers
+              if (playerRoleRef.current === 'red') {
+                merged.defenders = prevState.defenders;
+                merged.currentDefenderIndex = prevState.currentDefenderIndex;
+              }
+
+              return merged;
+            });
+          }
+
+          // Sync pause state
+          if (data.isPaused !== undefined) {
+            setIsPaused(data.isPaused);
           }
         }
       });
@@ -774,10 +801,37 @@ export default function KhoKhoWebsite() {
     setIsPaused(false);
   };
 
-  const restartGame = () => {
+  const restartGame = async () => {
     const newState = createInitialGameState();
     updateGameState(newState);
     setIsPaused(false);
+
+    // Sync restart to Firebase in online mode
+    if (gameMode === 'online' && currentRoom && firebaseReady) {
+      try {
+        await firebaseDB.current.ref('rooms/' + currentRoom).update({
+          isPaused: false
+        });
+      } catch (error) {
+        console.error('Error syncing restart:', error);
+      }
+    }
+  };
+
+  const togglePause = async () => {
+    const newPauseState = !isPaused;
+    setIsPaused(newPauseState);
+
+    // Sync pause state to Firebase in online mode
+    if (gameMode === 'online' && currentRoom && firebaseReady) {
+      try {
+        await firebaseDB.current.ref('rooms/' + currentRoom).update({
+          isPaused: newPauseState
+        });
+      } catch (error) {
+        console.error('Error syncing pause state:', error);
+      }
+    }
   };
 
   // Landing Page
@@ -1127,7 +1181,7 @@ export default function KhoKhoWebsite() {
               🔄 Restart
             </button>
             <button
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={togglePause}
               className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded-lg transition"
             >
               {isPaused ? '▶️' : '⏸️'}
