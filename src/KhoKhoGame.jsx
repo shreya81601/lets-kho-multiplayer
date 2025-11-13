@@ -343,7 +343,7 @@ export default function KhoKhoWebsite() {
           displayDirection: chaser.direction,
           sitting: false,
           side: chaser.direction === 'up' ? 'top' : 'bottom',
-          horizontalDirection: 'right'
+          horizontalDirection: null
         };
 
         updateGameState({
@@ -424,12 +424,12 @@ export default function KhoKhoWebsite() {
   useEffect(() => {
     if (screen !== 'game' || !gameStateRef.current || gameStateRef.current.gameOver || isPaused) return;
 
-    const canControlBlue = gameMode === 'local' || playerRole === 'blue';
-    const canControlRed = gameMode === 'local' || playerRole === 'red';
-
     gameLoopRef.current = setInterval(() => {
       const currentState = gameStateRef.current;
       if (!currentState || currentState.gameOver) return;
+
+      const canControlBlue = gameModeRef.current === 'local' || playerRoleRef.current === 'blue';
+      const canControlRed = gameModeRef.current === 'local' || playerRoleRef.current === 'red';
 
       const blueSpeed = 3.6;
       const redSpeed = 3;
@@ -530,14 +530,50 @@ export default function KhoKhoWebsite() {
         }
 
         if (!blocked) {
-          newState.activeChaser = { 
-            x: newX, 
-            y: newY, 
-            direction: newDirection, 
+          newState.activeChaser = {
+            x: newX,
+            y: newY,
+            direction: newDirection,
             side: newSide,
             displayDirection: displayDirection,
             horizontalDirection: newHorizontalDirection
           };
+
+          // Check for tag collision when blue player moves
+          const { defenders, currentDefenderIndex } = newState;
+          const defender = defenders[currentDefenderIndex];
+          if (defender && defender.active) {
+            if (checkTagCollision(newState.activeChaser, defender)) {
+              const newDefenders = [...defenders];
+              newDefenders[currentDefenderIndex].active = false;
+
+              const nextIndex = currentDefenderIndex + 1;
+
+              setTagMessage(`Defender ${currentDefenderIndex + 1} Tagged!`);
+              setTimeout(() => setTagMessage(null), 3000);
+
+              if (nextIndex >= 3) {
+                newState.gameOver = true;
+                newState.winner = 'blue';
+              } else {
+                newDefenders[nextIndex].active = true;
+                newDefenders[nextIndex].x = FIELD_WIDTH - 30;
+                newDefenders[nextIndex].y = CENTER_LANE_Y;
+                newState.currentDefenderIndex = nextIndex;
+              }
+
+              newState.activeChaser = {
+                x: 30,
+                y: CENTER_LANE_Y,
+                direction: 'up',
+                displayDirection: 'up',
+                side: 'top',
+                horizontalDirection: 'right'
+              };
+
+              newState.defenders = newDefenders;
+            }
+          }
         }
       }
 
