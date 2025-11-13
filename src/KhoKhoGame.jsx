@@ -11,13 +11,13 @@ const GAME_DURATION = 300;
 
 // Firebase configuration
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyA5DwYyPp8STT9xP01jvmptgo2LwMU37FQ",
-  authDomain: "lets-kho.firebaseapp.com",
-  databaseURL: "https://lets-kho-default-rtdb.firebaseio.com",
-  projectId: "lets-kho",
-  storageBucket: "lets-kho.firebasestorage.app",
-  messagingSenderId: "127448778115",
-  appId: "1:127448778115:web:154e5d5eadb303e25e62b6"
+  apiKey: "AIzaSyAE_fPR-TVuUkosZv-4eWZ6VAtSB-IHtSc",
+  authDomain: "lets-kho-multiplayer.firebaseapp.com",
+  databaseURL: "https://lets-kho-multiplayer-default-rtdb.firebaseio.com",
+  projectId: "lets-kho-multiplayer",
+  storageBucket: "lets-kho-multiplayer.firebasestorage.app",
+  messagingSenderId: "338126570546",
+  appId: "1:338126570546:web:01657761a046ac7686682b"
 };
 
 export default function KhoKhoWebsite() {
@@ -53,7 +53,7 @@ export default function KhoKhoWebsite() {
         document.head.appendChild(script1);
 
         const script2 = document.createElement('script');
-        script2.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js';
+        script2.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js';
         document.head.appendChild(script2);
 
         await new Promise((resolve) => {
@@ -63,7 +63,7 @@ export default function KhoKhoWebsite() {
         // Initialize Firebase
         if (window.firebase && !window.firebase.apps.length) {
           window.firebase.initializeApp(FIREBASE_CONFIG);
-          firebaseDB.current = window.firebase.firestore();
+          firebaseDB.current = window.firebase.database();
           setFirebaseReady(true);
         }
       } catch (error) {
@@ -127,7 +127,7 @@ export default function KhoKhoWebsite() {
       alert('Firebase is still loading. Please try again in a moment.');
       return;
     }
-    
+
     const code = generateRoomCode();
     const roomData = {
       code,
@@ -139,7 +139,7 @@ export default function KhoKhoWebsite() {
     };
 
     try {
-      await firebaseDB.current.collection('rooms').doc(code).set(roomData);
+      await firebaseDB.current.ref('rooms/' + code).set(roomData);
       setCurrentRoom(code);
       setPlayerRole('blue');
       setScreen('lobby');
@@ -161,16 +161,16 @@ export default function KhoKhoWebsite() {
     }
 
     try {
-      const roomRef = firebaseDB.current.collection('rooms').doc(roomCode.toUpperCase());
-      const roomSnap = await roomRef.get();
+      const roomRef = firebaseDB.current.ref('rooms/' + roomCode.toUpperCase());
+      const roomSnap = await roomRef.once('value');
 
-      if (!roomSnap.exists) {
+      if (!roomSnap.exists()) {
         alert('Room not found!');
         return;
       }
 
-      const roomData = roomSnap.data();
-      
+      const roomData = roomSnap.val();
+
       if (roomData.players.length >= 2) {
         alert('Room is full!');
         return;
@@ -193,9 +193,9 @@ export default function KhoKhoWebsite() {
     if (!currentRoom || !firebaseReady) return;
 
     const initialState = createInitialGameState();
-    
+
     try {
-      await firebaseDB.current.collection('rooms').doc(currentRoom).update({
+      await firebaseDB.current.ref('rooms/' + currentRoom).update({
         status: 'playing',
         gameState: initialState
       });
@@ -213,37 +213,37 @@ export default function KhoKhoWebsite() {
   // Listen for lobby changes
   useEffect(() => {
     if (currentRoom && screen === 'lobby' && firebaseReady) {
-      const unsubscribe = firebaseDB.current.collection('rooms').doc(currentRoom)
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
-            if (data.status === 'playing' && data.gameState) {
-              setGameState(data.gameState);
-              setScreen('game');
-            }
+      const roomRef = firebaseDB.current.ref('rooms/' + currentRoom);
+      const listener = roomRef.on('value', (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          if (data.status === 'playing' && data.gameState) {
+            setGameState(data.gameState);
+            setScreen('game');
           }
-        });
+        }
+      });
 
-      firestoreListenerRef.current = unsubscribe;
-      return () => unsubscribe();
+      firestoreListenerRef.current = () => roomRef.off('value', listener);
+      return () => roomRef.off('value', listener);
     }
   }, [currentRoom, screen, firebaseReady]);
 
   // Listen for game state changes
   useEffect(() => {
     if (gameMode === 'online' && currentRoom && screen === 'game' && firebaseReady) {
-      const unsubscribe = firebaseDB.current.collection('rooms').doc(currentRoom)
-        .onSnapshot((doc) => {
-          if (doc.exists) {
-            const data = doc.data();
-            if (data.gameState) {
-              setGameState(data.gameState);
-            }
+      const roomRef = firebaseDB.current.ref('rooms/' + currentRoom);
+      const listener = roomRef.on('value', (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          if (data.gameState) {
+            setGameState(data.gameState);
           }
-        });
+        }
+      });
 
-      firestoreListenerRef.current = unsubscribe;
-      return () => unsubscribe();
+      firestoreListenerRef.current = () => roomRef.off('value', listener);
+      return () => roomRef.off('value', listener);
     }
   }, [gameMode, currentRoom, screen, firebaseReady]);
 
@@ -252,7 +252,7 @@ export default function KhoKhoWebsite() {
       setGameState(newState);
     } else if (gameMode === 'online' && currentRoom && firebaseReady) {
       try {
-        await firebaseDB.current.collection('rooms').doc(currentRoom).update({
+        await firebaseDB.current.ref('rooms/' + currentRoom).update({
           gameState: newState
         });
       } catch (error) {
@@ -321,6 +321,7 @@ export default function KhoKhoWebsite() {
       if (distance < 50 && isBehind) {
         const newChasers = [...chasers];
 
+        // Put the OLD active chaser back in the seat
         newChasers[i] = {
           x: chaser.x,
           y: chaser.y,
@@ -329,6 +330,7 @@ export default function KhoKhoWebsite() {
           sitting: true
         };
 
+        // Create the NEW active chaser jumping from the seat
         const jumpDistance = 40;
         const newY = chaser.direction === 'up'
           ? chaser.y - jumpDistance
@@ -341,7 +343,7 @@ export default function KhoKhoWebsite() {
           displayDirection: chaser.direction,
           sitting: false,
           side: chaser.direction === 'up' ? 'top' : 'bottom',
-          horizontalDirection: null
+          horizontalDirection: 'right'
         };
 
         updateGameState({
