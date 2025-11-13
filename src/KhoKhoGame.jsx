@@ -263,9 +263,11 @@ export default function KhoKhoWebsite() {
   };
 
   const updateGameState = async (newState) => {
-    if (gameModeRef.current === 'local') {
-      setGameState(newState);
-    } else if (gameModeRef.current === 'online' && currentRoom && firebaseReady) {
+    // Always update local state immediately for smooth gameplay
+    setGameState(newState);
+
+    // If online mode, also sync to Firebase
+    if (gameModeRef.current === 'online' && currentRoom && firebaseReady) {
       try {
         const cleanedState = cleanStateForFirebase(newState);
         await firebaseDB.current.ref('rooms/' + currentRoom).update({
