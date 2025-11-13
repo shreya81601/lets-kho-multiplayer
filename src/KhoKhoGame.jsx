@@ -247,13 +247,29 @@ export default function KhoKhoWebsite() {
     }
   }, [gameMode, currentRoom, screen, firebaseReady]);
 
+  // Helper to remove undefined values (Firebase doesn't accept them)
+  const cleanStateForFirebase = (obj) => {
+    if (obj === null || obj === undefined) return null;
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(cleanStateForFirebase);
+
+    const cleaned = {};
+    for (const key in obj) {
+      if (obj[key] !== undefined) {
+        cleaned[key] = cleanStateForFirebase(obj[key]);
+      }
+    }
+    return cleaned;
+  };
+
   const updateGameState = async (newState) => {
-    if (gameMode === 'local') {
+    if (gameModeRef.current === 'local') {
       setGameState(newState);
-    } else if (gameMode === 'online' && currentRoom && firebaseReady) {
+    } else if (gameModeRef.current === 'online' && currentRoom && firebaseReady) {
       try {
+        const cleanedState = cleanStateForFirebase(newState);
         await firebaseDB.current.ref('rooms/' + currentRoom).update({
-          gameState: newState
+          gameState: cleanedState
         });
       } catch (error) {
         console.error('Error updating game state:', error);
@@ -442,7 +458,7 @@ export default function KhoKhoWebsite() {
         let newY = activeChaser.y;
         let newDirection = activeChaser.direction;
         let newSide = activeChaser.side;
-        let newHorizontalDirection = activeChaser.horizontalDirection;
+        let newHorizontalDirection = activeChaser.horizontalDirection || null;
 
         const centerTop = CENTER_LANE_Y - CENTER_LANE_HEIGHT / 2;
         const centerBottom = CENTER_LANE_Y + CENTER_LANE_HEIGHT / 2;
